@@ -40,6 +40,10 @@ jobs:
           cache: pnpm
 
       - name: Install deps
+        env:
+          # Don't let postinstall create dist/extensions/*/node_modules with
+          # .bin symlinks; the end-user install will run postinstall on their box.
+          OPENCLAW_DISABLE_BUNDLED_PLUGIN_POSTINSTALL: "1"
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck
@@ -48,18 +52,24 @@ jobs:
         run: pnpm tsgo
 
       - name: Build
+        env:
+          OPENCLAW_DISABLE_BUNDLED_PLUGIN_POSTINSTALL: "1"
         run: pnpm build
 
-      - name: Strip bundled-plugin node_modules from dist
-        # postinstall-bundled-plugins.mjs reinstalls these on the end-user machine;
-        # they don't belong in the tarball and their .bin symlinks break the
-        # prepack inventory safety check.
+      - name: Strip any leaked bundled-plugin node_modules from dist
+        # Belt-and-suspenders: even with the env var, intermediate steps can
+        # produce these directories. Their .bin symlinks fail the prepack
+        # inventory safety check, and end-user install regenerates them.
         run: |
           set -euo pipefail
           find dist/extensions -type d -name node_modules -prune -exec rm -rf {} + 2>/dev/null || true
 
       - name: Pack tarball
         id: pack
+        env:
+          # Skip prepack's rebuild + postinstall side-effects; we already built.
+          OPENCLAW_PREPACK_PREPARED: "1"
+          OPENCLAW_DISABLE_BUNDLED_PLUGIN_POSTINSTALL: "1"
         run: |
           set -euo pipefail
           # Clear any leftover tarballs, then pack

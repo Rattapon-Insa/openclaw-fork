@@ -438,6 +438,11 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Sub-agent",
       detailKeys: ["label", "task", "agentId", "model", "thinking", "runTimeoutSeconds", "cleanup"],
     },
+    sessions_run_and_wait: {
+      emoji: "⏳",
+      title: "Delegate (blocking)",
+      detailKeys: ["label", "task", "agentId", "model", "thinking", "timeoutSeconds"],
+    },
     subagents: {
       emoji: "🤖",
       title: "Subagents",

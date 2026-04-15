@@ -666,6 +666,18 @@
         "cleanup"
       ]
     },
+    "sessions_run_and_wait": {
+      "emoji": "⏳",
+      "title": "Delegate (blocking)",
+      "detailKeys": [
+        "label",
+        "task",
+        "agentId",
+        "model",
+        "thinking",
+        "timeoutSeconds"
+      ]
+    },
     "subagents": {
       "emoji": "🤖",
       "title": "Subagents",
