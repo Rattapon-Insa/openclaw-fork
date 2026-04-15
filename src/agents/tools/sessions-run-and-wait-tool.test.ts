@@ -52,10 +52,7 @@ describe("sessions_run_and_wait tool", () => {
 
   it("blocks until child finishes and returns last assistant text", async () => {
     hoisted.callGatewayMock.mockResolvedValue({
-      messages: [
-        assistantMessage("step 1"),
-        assistantMessage("final answer: 42"),
-      ],
+      messages: [assistantMessage("step 1"), assistantMessage("final answer: 42")],
     });
 
     const tool = createSessionsRunAndWaitTool({ agentSessionKey: "agent:main:main" });
@@ -139,6 +136,23 @@ describe("sessions_run_and_wait tool", () => {
       runId: "run-1",
       timeoutMs: 1_800_000,
     });
+  });
+
+  it("passes explicit timeoutMs to callGateway so chat.history doesn't fall back to the 10s default", async () => {
+    hoisted.callGatewayMock.mockResolvedValue({ messages: [assistantMessage("ok")] });
+    const tool = createSessionsRunAndWaitTool();
+    await tool.execute("call-7", { task: "x" });
+
+    expect(hoisted.callGatewayMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "chat.history",
+        timeoutMs: expect.any(Number),
+      }),
+    );
+    const call = hoisted.callGatewayMock.mock.calls.find(
+      (c) => (c[0] as { method?: string })?.method === "chat.history",
+    );
+    expect((call?.[0] as { timeoutMs?: number })?.timeoutMs ?? 0).toBeGreaterThanOrEqual(30_000);
   });
 
   it("composes context before task when context is provided", async () => {

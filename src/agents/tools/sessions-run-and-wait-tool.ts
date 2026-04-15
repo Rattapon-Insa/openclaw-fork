@@ -4,16 +4,18 @@ import type { GatewayMessageChannel } from "../../utils/message-channel.js";
 import { waitForAgentRun } from "../run-wait.js";
 import type { SpawnedToolContext } from "../spawned-context.js";
 import { spawnSubagentDirect } from "../subagent-spawn.js";
+import { extractAssistantText, stripToolMessages } from "./chat-history-text.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
-import {
-  extractAssistantText,
-  stripToolMessages,
-} from "./chat-history-text.js";
 import { isAnnounceSkip, isReplySkip } from "./sessions-send-tokens.js";
 
 const DEFAULT_TIMEOUT_SECONDS = 300;
 const MAX_TIMEOUT_SECONDS = 1800;
+// chat.history can be slow when many parent agents are concurrent; we've
+// observed the default 10s overriding our request and bucketing most workers
+// as `gateway timeout`. Give it a generous but bounded budget so fan-out
+// doesn't starve itself.
+const HISTORY_READ_TIMEOUT_MS = 30_000;
 
 const SessionsRunAndWaitToolSchema = Type.Object({
   task: Type.String({
@@ -42,16 +44,13 @@ const SessionsRunAndWaitToolSchema = Type.Object({
   ),
 });
 
-async function readChildFinalAssistantText(
-  sessionKey: string,
-): Promise<string | undefined> {
+async function readChildFinalAssistantText(sessionKey: string): Promise<string | undefined> {
   const history = await callGateway<{ messages: Array<unknown> }>({
     method: "chat.history",
     params: { sessionKey, limit: 100 },
+    timeoutMs: HISTORY_READ_TIMEOUT_MS,
   });
-  const messages = stripToolMessages(
-    Array.isArray(history?.messages) ? history.messages : [],
-  );
+  const messages = stripToolMessages(Array.isArray(history?.messages) ? history.messages : []);
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const text = extractAssistantText(messages[i]);
     if (!text) {
