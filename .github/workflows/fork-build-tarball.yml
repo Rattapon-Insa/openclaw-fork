@@ -1,0 +1,89 @@
+name: Fork Build Tarball
+
+on:
+  push:
+    branches:
+      - "feat/**"
+    tags:
+      - "fork-v*"
+  workflow_dispatch:
+
+concurrency:
+  group: fork-build-tarball-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24.x"
+  PNPM_VERSION: "10.32.1"
+
+jobs:
+  build-tarball:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        env:
+          OPENCLAW_LOCAL_CHECK: "0"
+        run: pnpm tsgo
+
+      - name: Build
+        run: pnpm build
+
+      - name: Pack tarball
+        id: pack
+        run: |
+          set -euo pipefail
+          # Clear any leftover tarballs, then pack
+          find . -maxdepth 1 -name 'openclaw-*.tgz' -delete
+          npm pack
+          PACK_FILE="$(find . -maxdepth 1 -name 'openclaw-*.tgz' -print -quit)"
+          if [[ -z "$PACK_FILE" || ! -f "$PACK_FILE" ]]; then
+            echo "npm pack did not produce a tarball" >&2
+            exit 1
+          fi
+          SHA="$(git rev-parse --short HEAD)"
+          RENAMED="openclaw-fork-${SHA}.tgz"
+          mv "$PACK_FILE" "$RENAMED"
+          echo "file=$RENAMED" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.file }}
+          path: ${{ steps.pack.outputs.file }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create release (tags only)
+        if: startsWith(github.ref, 'refs/tags/fork-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##*/}"
+          gh release create "$TAG" \
+            --title "$TAG (fork build)" \
+            --notes "Private-fork build of openclaw with sessions_run_and_wait tool. Commit: ${{ steps.pack.outputs.sha }}" \
+            "${{ steps.pack.outputs.file }}"
