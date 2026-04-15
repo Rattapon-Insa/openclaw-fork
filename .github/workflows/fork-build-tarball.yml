@@ -56,6 +56,11 @@ jobs:
           OPENCLAW_DISABLE_BUNDLED_PLUGIN_POSTINSTALL: "1"
         run: pnpm build
 
+      - name: Build Control UI
+        env:
+          OPENCLAW_DISABLE_BUNDLED_PLUGIN_POSTINSTALL: "1"
+        run: pnpm ui:build
+
       - name: Strip any leaked bundled-plugin node_modules from dist
         # Belt-and-suspenders: even with the env var, intermediate steps can
         # produce these directories. Their .bin symlinks fail the prepack
