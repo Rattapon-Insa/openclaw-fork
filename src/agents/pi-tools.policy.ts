@@ -4,7 +4,7 @@ import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { resolveChannelGroupToolsPolicy } from "../config/group-policy.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { AgentToolsConfig } from "../config/types.tools.js";
-import { normalizeAgentId } from "../routing/session-key.js";
+import { isSubagentSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import {
   parseRawSessionConversationRef,
   parseThreadSessionSuffix,
@@ -421,6 +421,38 @@ export function resolveGroupToolPolicy(params: {
     senderE164: params.senderE164,
   });
   return pickSandboxToolPolicy(configTools);
+}
+
+/**
+ * Filter MCP/LSP tools through the same policy pipeline used for core tools.
+ * Fixes the bug where MCP/LSP tools bypass agent-level `tools.deny` because
+ * they are materialized after the main policy pipeline runs in attempt.ts.
+ */
+export function filterLateBoundToolsByPolicy(params: {
+  tools: AnyAgentTool[];
+  config?: OpenClawConfig;
+  sessionKey?: string;
+  agentId?: string;
+}): AnyAgentTool[] {
+  if (params.tools.length === 0) {
+    return params.tools;
+  }
+  const { globalPolicy, agentPolicy } = resolveEffectiveToolPolicy({
+    config: params.config,
+    sessionKey: params.sessionKey,
+    agentId: params.agentId,
+  });
+  const subagentPolicy =
+    params.sessionKey && isSubagentSessionKey(params.sessionKey) && params.config
+      ? resolveSubagentToolPolicyForSession(params.config, params.sessionKey)
+      : undefined;
+  const policies = [globalPolicy, agentPolicy, subagentPolicy].filter(
+    (p): p is SandboxToolPolicy => !!p,
+  );
+  if (policies.length === 0) {
+    return params.tools;
+  }
+  return params.tools.filter((tool) => isToolAllowedByPolicies(tool.name, policies));
 }
 
 export { isToolAllowedByPolicies, isToolAllowedByPolicyName } from "./tool-policy-match.js";

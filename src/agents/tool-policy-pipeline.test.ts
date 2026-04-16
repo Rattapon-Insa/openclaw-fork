@@ -266,4 +266,41 @@ describe("tool-policy-pipeline", () => {
     });
     expect(filtered.map((t) => (t as unknown as DummyTool).name)).toEqual(["exec"]);
   });
+
+  test("agent deny glob filters MCP-namespaced tools", () => {
+    const tools = [
+      { name: "exec" },
+      { name: "ship-tools__check_eta" },
+      { name: "ship-tools__list_shipments" },
+      { name: "gmail-tools__search" },
+    ] as unknown as DummyTool[];
+    const filtered = applyToolPolicyPipeline({
+      tools: tools as any,
+      toolMeta: () => undefined,
+      warn: () => {},
+      steps: buildDefaultToolPolicyPipelineSteps({
+        agentPolicy: { deny: ["ship-tools__*"] },
+        agentId: "main",
+      }),
+    });
+    const names = filtered.map((t) => (t as unknown as DummyTool).name);
+    expect(names).toContain("exec");
+    expect(names).toContain("gmail-tools__search");
+    expect(names).not.toContain("ship-tools__check_eta");
+    expect(names).not.toContain("ship-tools__list_shipments");
+  });
+
+  test("global deny filters tools across all agents", () => {
+    const tools = [{ name: "gateway" }, { name: "exec" }] as unknown as DummyTool[];
+    const filtered = applyToolPolicyPipeline({
+      tools: tools as any,
+      toolMeta: () => undefined,
+      warn: () => {},
+      steps: buildDefaultToolPolicyPipelineSteps({
+        globalPolicy: { deny: ["gateway"] },
+      }),
+    });
+    const names = filtered.map((t) => (t as unknown as DummyTool).name);
+    expect(names).toEqual(["exec"]);
+  });
 });

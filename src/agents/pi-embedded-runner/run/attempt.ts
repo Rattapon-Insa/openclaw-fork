@@ -88,6 +88,7 @@ import { createPreparedEmbeddedPiSettingsManager } from "../../pi-project-settin
 import { applyPiAutoCompactionGuard } from "../../pi-settings.js";
 import { toClientToolDefinitions } from "../../pi-tool-definition-adapter.js";
 import { createOpenClawCodingTools, resolveToolLoopDetectionConfig } from "../../pi-tools.js";
+import { filterLateBoundToolsByPolicy } from "../../pi-tools.policy.js";
 import { wrapStreamFnTextTransforms } from "../../plugin-text-transforms.js";
 import { describeProviderRequestRoutingSummary } from "../../provider-attribution.js";
 import { registerProviderStreamForModel } from "../../provider-stream.js";
@@ -599,11 +600,14 @@ export async function runEmbeddedAttempt(
           ],
         })
       : undefined;
-    const effectiveTools = [
-      ...tools,
-      ...(bundleMcpRuntime?.tools ?? []),
-      ...(bundleLspRuntime?.tools ?? []),
-    ];
+    const mcpAndLspTools = [...(bundleMcpRuntime?.tools ?? []), ...(bundleLspRuntime?.tools ?? [])];
+    const filteredMcpLspTools = filterLateBoundToolsByPolicy({
+      tools: mcpAndLspTools,
+      config: params.config,
+      sessionKey: params.sessionKey,
+      agentId: params.agentId,
+    });
+    const effectiveTools = [...tools, ...filteredMcpLspTools];
     const allowedToolNames = collectAllowedToolNames({
       tools: effectiveTools,
       clientTools,
