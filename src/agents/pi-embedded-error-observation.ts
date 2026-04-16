@@ -109,6 +109,7 @@ export function buildApiErrorObservationFields(
   rawError?: string,
   opts?: { provider?: string },
 ): {
+  rawErrorFull?: string;
   rawErrorPreview?: string;
   rawErrorHash?: string;
   rawErrorFingerprint?: string;
@@ -141,6 +142,7 @@ export function buildApiErrorObservationFields(
     );
 
     return {
+      rawErrorFull: redactedRawPreview ?? undefined,
       rawErrorPreview: truncateForObservation(redactedRawPreview, RAW_ERROR_PREVIEW_MAX_CHARS),
       rawErrorHash: redactIdentifier(trimmed, { len: 12 }),
       rawErrorFingerprint: rawFingerprint

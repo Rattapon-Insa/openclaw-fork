@@ -180,6 +180,46 @@ describe("buildApiErrorObservationFields", () => {
     expect(observed.rawErrorPreview).toContain("custom");
   });
 
+  it("includes rawErrorFull with full redacted text (not truncated)", () => {
+    const longMessage = "E".repeat(600);
+    const observed = buildApiErrorObservationFields(
+      `{"type":"error","error":{"type":"rate_limit_error","message":"${longMessage}"},"request_id":"req_full"}`,
+    );
+
+    expect(observed.rawErrorPreview).toBeDefined();
+    expect(observed.rawErrorFull).toBeDefined();
+    // Preview is truncated to ~400 chars
+    expect(observed.rawErrorPreview!.length).toBeLessThanOrEqual(401);
+    // Full is NOT truncated — contains entire redacted message
+    expect(observed.rawErrorFull!.length).toBeGreaterThan(401);
+    expect(observed.rawErrorFull).toContain("rate_limit_error");
+    // Still redacted
+    expect(observed.rawErrorFull).not.toContain("req_full");
+  });
+
+  it("rawErrorFull redacts API keys", () => {
+    const observed = buildApiErrorObservationFields(
+      `x-api-key: sk-secret-key-12345 error: rate limit exceeded`,
+    );
+
+    expect(observed.rawErrorFull).toBeDefined();
+    expect(observed.rawErrorFull).not.toContain("sk-secret-key-12345");
+    expect(observed.rawErrorFull).toContain("x-api-key: ***");
+  });
+
+  it("rawErrorFull bounded at 64K for oversized input", () => {
+    const oversized = "X".repeat(100_000);
+    const observed = buildApiErrorObservationFields(oversized);
+
+    expect(observed.rawErrorFull).toBeDefined();
+    expect(observed.rawErrorFull!.length).toBeLessThanOrEqual(64_001); // 64K + possible "…"
+  });
+
+  it("rawErrorFull is undefined for empty input", () => {
+    expect(buildApiErrorObservationFields(undefined).rawErrorFull).toBeUndefined();
+    expect(buildApiErrorObservationFields("").rawErrorFull).toBeUndefined();
+  });
+
   it("keeps provider-less missing-scope auth payloads out of the codex-specific scope lane", () => {
     const observed = buildApiErrorObservationFields(
       '401 {"type":"error","error":{"type":"permission_error","message":"Missing scopes: api.responses.write"}}',
