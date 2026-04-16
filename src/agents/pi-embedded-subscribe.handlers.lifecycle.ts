@@ -1,5 +1,6 @@
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { createInlineCodeState } from "../markdown/code-spans.js";
+import { beginOpikTrace, flushOpikTrace, recordOpikLlmSpan } from "./opik-native-trace.js";
 import {
   buildApiErrorObservationFields,
   buildTextObservationFields,
@@ -22,6 +23,12 @@ export {
 
 export function handleAgentStart(ctx: EmbeddedPiSubscribeContext) {
   ctx.log.debug(`embedded run agent start: runId=${ctx.params.runId}`);
+  beginOpikTrace({
+    agentId: ctx.params.agentId ?? "unknown",
+    sessionId: ctx.params.sessionId ?? ctx.params.runId,
+    runId: ctx.params.runId,
+    userMessage: "",
+  });
   emitAgentEvent({
     runId: ctx.params.runId,
     stream: "lifecycle",
@@ -101,6 +108,48 @@ export function handleAgentEnd(ctx: EmbeddedPiSubscribeContext): void | Promise<
     });
   } else {
     ctx.log.debug(`embedded run agent end: runId=${ctx.params.runId} isError=${isError}`);
+  }
+
+  // Native Opik trace: record LLM span from last assistant + flush trace.
+  if (isAssistantMessage(lastAssistant) && lastAssistant.stopReason !== undefined) {
+    const assistantAny = lastAssistant as unknown as Record<string, unknown>;
+    const usage = assistantAny.usage as Record<string, number> | undefined;
+    const model = (assistantAny.model as string) ?? "unknown";
+    const provider = (assistantAny.provider as string) ?? "unknown";
+    const assistantText = Array.isArray(ctx.state.assistantTexts)
+      ? ctx.state.assistantTexts.join("\n").slice(0, 500)
+      : "";
+    recordOpikLlmSpan({
+      runId: ctx.params.runId,
+      model,
+      provider,
+      usage: usage
+        ? {
+            input: usage.input ?? usage.prompt_tokens ?? 0,
+            output: usage.output ?? usage.completion_tokens ?? 0,
+            cacheRead: usage.cacheRead as number | undefined,
+            total: usage.totalTokens ?? usage.total ?? 0,
+            cost: usage.cost as { total?: number } | undefined,
+          }
+        : undefined,
+      text: assistantText,
+    });
+    const rawErrorForOpik = isError ? (assistantAny.errorMessage as string)?.trim() : undefined;
+    const observedErrorForOpik = rawErrorForOpik
+      ? buildApiErrorObservationFields(rawErrorForOpik, { provider })
+      : undefined;
+    void flushOpikTrace({
+      runId: ctx.params.runId,
+      success: !isError,
+      error: lifecycleErrorText,
+      rawErrorFull: observedErrorForOpik?.rawErrorFull,
+    });
+  } else {
+    void flushOpikTrace({
+      runId: ctx.params.runId,
+      success: !isError,
+      error: lifecycleErrorText,
+    });
   }
 
   const emitLifecycleTerminal = () => {
