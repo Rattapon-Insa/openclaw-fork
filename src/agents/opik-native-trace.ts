@@ -5,7 +5,26 @@
  * Enabled when OPIK_URL env var is set (e.g. "http://localhost:8080").
  * All functions are no-ops when OPIK_URL is empty/unset.
  */
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
+
+/** Generate a UUIDv7 (timestamp-based) as required by Opik API. */
+function uuidv7(): string {
+  const now = Date.now();
+  const bytes = randomBytes(16);
+  // 48-bit timestamp in ms (big-endian)
+  bytes[0] = (now / 2 ** 40) & 0xff;
+  bytes[1] = (now / 2 ** 32) & 0xff;
+  bytes[2] = (now / 2 ** 24) & 0xff;
+  bytes[3] = (now / 2 ** 16) & 0xff;
+  bytes[4] = (now / 2 ** 8) & 0xff;
+  bytes[5] = now & 0xff;
+  // version 7
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  // variant 10xx
+  bytes[7] = (bytes[7] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 interface OpikSpan {
   name: string;
@@ -62,7 +81,7 @@ export function beginOpikTrace(params: {
     return;
   }
   accumulators.set(params.runId, {
-    traceId: randomUUID(),
+    traceId: uuidv7(),
     agentId: params.agentId,
     sessionId: params.sessionId,
     startTime: new Date(),
@@ -181,7 +200,7 @@ export async function flushOpikTrace(params: {
   };
 
   const spanPayloads = acc.spans.map((span) => ({
-    id: randomUUID(),
+    id: uuidv7(),
     trace_id: acc.traceId,
     name: span.name,
     type: span.type,
