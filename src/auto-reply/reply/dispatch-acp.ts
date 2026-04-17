@@ -6,6 +6,12 @@ import {
   isSessionIdentityPending,
   resolveSessionIdentityFromMeta,
 } from "../../acp/runtime/session-identity.js";
+import {
+  beginOpikTrace,
+  recordOpikLlmSpan,
+  recordOpikToolSpan,
+  flushOpikTrace,
+} from "../../agents/opik-native-trace.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { TtsAutoMode } from "../../config/types.tts.js";
 import { logVerbose } from "../../globals.js";
@@ -366,6 +372,7 @@ export async function tryDispatchAcpReply(params: {
   });
 
   const acpDispatchStartedAt = Date.now();
+  const opikRunId = params.runId ?? generateSecureUuid();
   try {
     const dispatchPolicyError = resolveAcpDispatchPolicyError(params.cfg);
     if (dispatchPolicyError) {
@@ -428,6 +435,14 @@ export async function tryDispatchAcpReply(params: {
       logVerbose(`dispatch-acp: start reply lifecycle failed: ${formatErrorMessage(error)}`);
     }
 
+    beginOpikTrace({
+      agentId: resolvedAcpAgent ?? "acp",
+      sessionId: canonicalSessionKey,
+      runId: opikRunId,
+      userMessage: promptText,
+    });
+
+    let acpOutputText = "";
     await acpManager.runTurn({
       cfg: params.cfg,
       sessionKey: canonicalSessionKey,
@@ -436,7 +451,17 @@ export async function tryDispatchAcpReply(params: {
       mode: "prompt",
       requestId: resolveAcpRequestId(params.ctx),
       ...(params.abortSignal ? { signal: params.abortSignal } : {}),
-      onEvent: async (event) => await projector.onEvent(event),
+      onEvent: async (event) => {
+        if (event.type === "text_delta" && event.stream !== "thought") {
+          acpOutputText += event.text;
+        } else if (event.type === "tool_call") {
+          recordOpikToolSpan({
+            runId: opikRunId,
+            toolName: event.title ?? event.text ?? "tool",
+          });
+        }
+        await projector.onEvent(event);
+      },
     });
 
     await projector.flush(true);
@@ -450,6 +475,14 @@ export async function tryDispatchAcpReply(params: {
         ttsChannel: params.ttsChannel,
         shouldEmitResolvedIdentityNotice,
       })) || queuedFinal;
+
+    recordOpikLlmSpan({
+      runId: opikRunId,
+      model: "gemini-cli",
+      provider: "acp",
+      text: acpOutputText,
+    });
+    await flushOpikTrace({ runId: opikRunId, success: true });
 
     const counts = params.dispatcher.getQueuedCounts();
     delivery.applyRoutedCounts(counts);
@@ -479,6 +512,11 @@ export async function tryDispatchAcpReply(params: {
       error: err,
       fallbackCode: "ACP_TURN_FAILED",
       fallbackMessage: "ACP turn failed before completion.",
+    });
+    await flushOpikTrace({
+      runId: opikRunId,
+      success: false,
+      error: acpError.message,
     });
     await maybeUnbindStaleBoundConversations({
       targetSessionKey: canonicalSessionKey,
