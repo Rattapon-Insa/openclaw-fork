@@ -31,6 +31,7 @@ type ResolvedAcpAgentConfig = {
   agent: string;
   mode: AcpRuntimeSessionMode;
   cwd?: string;
+  toolsDeny?: string[];
 };
 
 function resolveAcpAgentConfig(cfg: OpenClawConfig, agentId: string): ResolvedAcpAgentConfig {
@@ -41,10 +42,16 @@ function resolveAcpAgentConfig(cfg: OpenClawConfig, agentId: string): ResolvedAc
     typeof acp?.agent === "string" && acp.agent.trim().length > 0 ? acp.agent.trim() : undefined;
   const configuredCwd =
     typeof acp?.cwd === "string" && acp.cwd.trim().length > 0 ? acp.cwd.trim() : undefined;
+  const configuredDeny = Array.isArray(entry?.tools?.deny)
+    ? entry.tools.deny.filter(
+        (pattern): pattern is string => typeof pattern === "string" && pattern.trim().length > 0,
+      )
+    : undefined;
   return {
     agent: configuredAgent ?? cfg.acp?.defaultAgent ?? "gemini",
     mode: acp?.mode === "oneshot" ? "oneshot" : "persistent",
     ...(configuredCwd ? { cwd: configuredCwd } : {}),
+    ...(configuredDeny && configuredDeny.length > 0 ? { toolsDeny: configuredDeny } : {}),
   };
 }
 
@@ -84,6 +91,7 @@ export async function runAcpCronAgent(
         agent: agentConfig.agent,
         mode: agentConfig.mode,
         ...(agentConfig.cwd ? { cwd: agentConfig.cwd } : {}),
+        ...(agentConfig.toolsDeny ? { toolsDeny: agentConfig.toolsDeny } : {}),
       });
     } catch (err) {
       const message = formatErrorMessage(err);

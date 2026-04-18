@@ -4,7 +4,7 @@
   "description": "OpenClaw ACP runtime backend",
   "type": "module",
   "dependencies": {
-    "acpx": "0.5.3"
+    "acpx": "github:Rattapon-Insa/acpx#b4fa08006e1224dfbefe36d500a9d7396af29d43"
   },
   "devDependencies": {
     "@openclaw/plugin-sdk": "workspace:*"

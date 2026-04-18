@@ -64,15 +64,62 @@ type AcpxRuntimeLike = AcpRuntime & {
   doctor(): Promise<AcpRuntimeDoctorReport>;
 };
 
+type RuntimeMcpServer = { name: string; [key: string]: unknown };
+
+/**
+ * Extract denied MCP server names from agent-level tool deny globs. A deny
+ * pattern like "ship-tools__*" denies the entire MCP server named
+ * "ship-tools". Patterns without the "__" separator (which targets the MCP
+ * server/tool boundary) do not filter any server.
+ */
+function resolveDeniedMcpServerNames(toolsDeny: readonly string[]): Set<string> {
+  const names = new Set<string>();
+  for (const pattern of toolsDeny) {
+    const trimmed = pattern.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const separatorIndex = trimmed.indexOf("__");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const serverName = trimmed.slice(0, separatorIndex);
+    const toolSuffix = trimmed.slice(separatorIndex + 2);
+    if (toolSuffix === "*") {
+      names.add(serverName);
+    }
+  }
+  return names;
+}
+
+function filterMcpServersByDeny(
+  mcpServers: readonly RuntimeMcpServer[] | undefined,
+  toolsDeny: readonly string[] | undefined,
+): RuntimeMcpServer[] | undefined {
+  if (!mcpServers) {
+    return undefined;
+  }
+  if (!toolsDeny || toolsDeny.length === 0) {
+    return undefined;
+  }
+  const denied = resolveDeniedMcpServerNames(toolsDeny);
+  if (denied.size === 0) {
+    return undefined;
+  }
+  return mcpServers.filter((server) => !denied.has(server.name));
+}
+
 export class AcpxRuntime implements AcpxRuntimeLike {
   private readonly sessionStore: ResetAwareSessionStore;
   private readonly delegate: BaseAcpxRuntime;
+  private readonly allMcpServers: readonly RuntimeMcpServer[];
 
   constructor(
     options: AcpRuntimeOptions,
     testOptions?: ConstructorParameters<typeof BaseAcpxRuntime>[1],
   ) {
     this.sessionStore = createResetAwareSessionStore(options.sessionStore);
+    this.allMcpServers = (options.mcpServers ?? []) as readonly RuntimeMcpServer[];
     this.delegate = new BaseAcpxRuntime(
       {
         ...options,
@@ -95,7 +142,14 @@ export class AcpxRuntime implements AcpxRuntimeLike {
   }
 
   ensureSession(input: Parameters<AcpRuntime["ensureSession"]>[0]): Promise<AcpRuntimeHandle> {
-    return this.delegate.ensureSession(input);
+    const filtered = filterMcpServersByDeny(this.allMcpServers, input.toolsDeny);
+    if (!filtered) {
+      return this.delegate.ensureSession(input);
+    }
+    return this.delegate.ensureSession({
+      ...input,
+      mcpServers: filtered,
+    } as Parameters<BaseAcpxRuntime["ensureSession"]>[0]);
   }
 
   runTurn(input: Parameters<AcpRuntime["runTurn"]>[0]): AsyncIterable<AcpRuntimeEvent> {

@@ -38,6 +38,12 @@ export type AcpRuntimeEnsureInput = {
   resumeSessionId?: string;
   cwd?: string;
   env?: Record<string, string>;
+  /**
+   * Per-agent MCP tool deny list (glob patterns, e.g. `ship-tools__*`).
+   * When supplied, the ACPX backend filters its constructor-time MCP server
+   * list before exposing it to the session's Gemini CLI subprocess.
+   */
+  toolsDeny?: string[];
 };
 
 export type AcpRuntimeTurnAttachment = {

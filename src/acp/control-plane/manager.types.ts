@@ -46,6 +46,8 @@ export type AcpInitializeSessionInput = {
   resumeSessionId?: string;
   cwd?: string;
   backendId?: string;
+  /** Forwarded to runtime.ensureSession for per-agent MCP tool filtering. */
+  toolsDeny?: string[];
 };
 
 export type AcpTurnAttachment = {

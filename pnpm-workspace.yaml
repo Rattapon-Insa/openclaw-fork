@@ -35,6 +35,7 @@ onlyBuiltDependencies:
   - "@napi-rs/canvas"
   - "@tloncorp/api"
   - "@whiskeysockets/baileys"
+  - acpx
   - authenticate-pam
   - esbuild
   - node-llama-cpp

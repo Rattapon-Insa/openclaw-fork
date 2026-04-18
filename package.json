@@ -1524,6 +1524,7 @@
       "@tloncorp/api",
       "@tloncorp/tlon-skill",
       "@whiskeysockets/baileys",
+      "acpx",
       "authenticate-pam",
       "esbuild",
       "node-llama-cpp",
