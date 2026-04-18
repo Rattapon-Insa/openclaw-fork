@@ -187,7 +187,7 @@ describe("runCronIsolatedAgentTurn — ACP runtime dispatch", () => {
     expect(runEmbeddedPiAgentMock).toHaveBeenCalled();
   });
 
-  it("falls back to embedded runtime when runtime config is absent", async () => {
+  it("falls back to embedded runtime when runtime config is absent (no ACP dispatch)", async () => {
     runWithModelFallbackMock.mockImplementation(async ({ provider, model, run }) => {
       const result = await run(provider, model);
       return { result, provider, model, attempts: [] };
