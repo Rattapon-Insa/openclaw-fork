@@ -84,6 +84,9 @@ export async function runAcpCronAgent(
 
   const agentConfig = resolveAcpAgentConfig(params.cfg, params.agentId);
   const shouldReinitialize = resolution.kind === "none" || agentConfig.mode === "oneshot";
+  process.stderr.write(
+    `[debug-acp-deny:cron] agent=${params.agentId} resolution=${resolution.kind} mode=${agentConfig.mode} toolsDeny=${JSON.stringify(agentConfig.toolsDeny)} shouldReinit=${shouldReinitialize}\n`,
+  );
   if (shouldReinitialize) {
     try {
       await manager.initializeSession({

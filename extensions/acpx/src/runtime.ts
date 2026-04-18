@@ -143,6 +143,9 @@ export class AcpxRuntime implements AcpxRuntimeLike {
 
   ensureSession(input: Parameters<AcpRuntime["ensureSession"]>[0]): Promise<AcpRuntimeHandle> {
     const filtered = filterMcpServersByDeny(this.allMcpServers, input.toolsDeny);
+    process.stderr.write(
+      `[debug-acp-deny:wrapper] sessionKey=${input.sessionKey} toolsDeny=${JSON.stringify(input.toolsDeny)} allMcpServers=${JSON.stringify(this.allMcpServers.map((s) => s.name))} filtered=${filtered ? JSON.stringify(filtered.map((s) => s.name)) : "undefined"}\n`,
+    );
     if (!filtered) {
       return this.delegate.ensureSession(input);
     }
