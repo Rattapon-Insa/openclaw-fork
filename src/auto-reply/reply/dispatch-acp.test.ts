@@ -17,6 +17,15 @@ import { createAcpSessionMeta, createAcpTestConfig } from "./test-fixtures/acp-r
 const managerMocks = vi.hoisted(() => ({
   resolveSession: vi.fn(),
   runTurn: vi.fn(),
+  initializeSession: vi.fn(async () => ({
+    runtime: {},
+    handle: {
+      sessionKey: "agent:main:acp:test",
+      backend: "acpx",
+      runtimeSessionName: "runtime:1",
+    },
+    meta: {},
+  })),
   getObservabilitySnapshot: vi.fn(() => ({
     turns: { queueDepth: 0 },
     runtimeCache: { activeSessions: 0 },
@@ -333,6 +342,16 @@ describe("tryDispatchAcpReply", () => {
         await onEvent?.({ type: "done" });
       },
     );
+    managerMocks.initializeSession.mockReset();
+    managerMocks.initializeSession.mockResolvedValue({
+      runtime: {},
+      handle: {
+        sessionKey: "agent:main:acp:test",
+        backend: "acpx",
+        runtimeSessionName: "runtime:1",
+      },
+      meta: {},
+    });
     managerMocks.getObservabilitySnapshot.mockReset();
     managerMocks.getObservabilitySnapshot.mockReturnValue({
       turns: { queueDepth: 0 },
@@ -1341,5 +1360,120 @@ describe("tryDispatchAcpReply", () => {
     expect(result?.counts.final).toBe(0);
     expect(routeMocks.routeReply).not.toHaveBeenCalled();
     expect(ttsMocks.maybeApplyTtsToPayload).not.toHaveBeenCalled();
+  });
+
+  describe("per-agent runtime.acp threading (cwd + mode)", () => {
+    // sessionKey is `agent:codex-acp:session-1` at module scope, so
+    // resolveAgentIdFromSessionKey() returns "codex-acp" — we match cfg agents
+    // against that id below.
+
+    function cfgWithAcpAgent(runtimeAcp: {
+      agent?: string;
+      mode?: "persistent" | "oneshot";
+      cwd?: string;
+    }): OpenClawConfig {
+      return createAcpTestConfig({
+        agents: {
+          list: [
+            {
+              id: "codex-acp",
+              runtime: {
+                type: "acp",
+                acp: runtimeAcp,
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    it("calls initializeSession with per-agent cwd+mode when runtime.acp.mode is oneshot", async () => {
+      setReadyAcpResolution();
+      const cfg = cfgWithAcpAgent({
+        agent: "gemini",
+        mode: "oneshot",
+        cwd: "/wrk-gmail",
+      });
+
+      await runDispatch({ bodyForAgent: "ping", cfg });
+
+      expect(managerMocks.initializeSession).toHaveBeenCalledTimes(1);
+      const firstCall = (managerMocks.initializeSession.mock.calls as unknown as unknown[][])[0];
+      const initInput = (firstCall?.[0] ?? {}) as {
+        agent: string;
+        mode: string;
+        cwd?: string;
+      };
+      expect(initInput.agent).toBe("gemini");
+      expect(initInput.mode).toBe("oneshot");
+      expect(initInput.cwd).toBe("/wrk-gmail");
+      expect(managerMocks.runTurn).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call initializeSession for persistent agents on ready sessions", async () => {
+      setReadyAcpResolution();
+      const cfg = cfgWithAcpAgent({ agent: "gemini", mode: "persistent" });
+
+      await runDispatch({ bodyForAgent: "ping", cfg });
+
+      expect(managerMocks.initializeSession).not.toHaveBeenCalled();
+      expect(managerMocks.runTurn).toHaveBeenCalledTimes(1);
+    });
+
+    it("reinitializes a ready oneshot session (fresh subprocess per turn)", async () => {
+      setReadyAcpResolution();
+      const cfg = cfgWithAcpAgent({ agent: "gemini", mode: "oneshot" });
+
+      await runDispatch({ bodyForAgent: "ping", cfg });
+
+      expect(managerMocks.initializeSession).toHaveBeenCalledTimes(1);
+      expect(managerMocks.runTurn).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to defaults when agent has no runtime.acp", async () => {
+      setReadyAcpResolution();
+      // No runtime.acp at all on the agent entry — defaults apply:
+      // mode=persistent → skip init, agent=cfg.acp?.defaultAgent ?? "gemini".
+      const cfg = createAcpTestConfig({
+        agents: { list: [{ id: "codex-acp" }] },
+      });
+
+      await runDispatch({ bodyForAgent: "ping", cfg });
+
+      expect(managerMocks.initializeSession).not.toHaveBeenCalled();
+      expect(managerMocks.runTurn).toHaveBeenCalledTimes(1);
+    });
+
+    it("surfaces initializeSession failure as ACP dispatch error", async () => {
+      setReadyAcpResolution();
+      // Drain any leftover one-shot TTS overrides queued by earlier tests in
+      // this file — without this, the delivery coordinator overrides our
+      // isError payload text with a stale queued value.
+      ttsMocks.maybeApplyTtsToPayload.mockReset();
+      ttsMocks.maybeApplyTtsToPayload.mockImplementation(async (paramsUnknown: unknown) => {
+        const p = paramsUnknown as { payload: unknown };
+        return p.payload;
+      });
+      const cfg = cfgWithAcpAgent({ agent: "gemini", mode: "oneshot" });
+      managerMocks.initializeSession.mockRejectedValueOnce(
+        new AcpRuntimeError("ACP_SESSION_INIT_FAILED", "boom"),
+      );
+
+      const { dispatcher } = createDispatcher();
+      await runDispatch({ bodyForAgent: "ping", cfg, dispatcher });
+
+      // Init was attempted, but threw — runTurn must not be reached so the
+      // broken subprocess never gets a prompt.
+      expect(managerMocks.initializeSession).toHaveBeenCalledTimes(1);
+      expect(managerMocks.runTurn).not.toHaveBeenCalled();
+      // The outer dispatch catch block delivers an error reply to the user.
+      // Other leftover mock-queue state in this file can cause unrelated
+      // sendFinalReply calls, so scan all calls for the isError one rather
+      // than asserting on nth-call identity.
+      const errorCall = (
+        dispatcher.sendFinalReply as unknown as { mock: { calls: [{ isError?: boolean }][] } }
+      ).mock.calls.find((args) => args[0]?.isError === true);
+      expect(errorCall).toBeDefined();
+    });
   });
 });

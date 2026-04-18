@@ -1,3 +1,4 @@
+import { resolveAcpAgentConfig } from "../../acp/control-plane/resolve-agent-config.js";
 import { resolveAcpAgentPolicyError, resolveAcpDispatchPolicyError } from "../../acp/policy.js";
 import { formatAcpRuntimeErrorText } from "../../acp/runtime/error-text.js";
 import { toAcpRuntimeError } from "../../acp/runtime/errors.js";
@@ -441,6 +442,30 @@ export async function tryDispatchAcpReply(params: {
       runId: opikRunId,
       userMessage: promptText,
     });
+
+    // Thread per-openclaw-agent `runtime.acp.{cwd, mode}` into the backend
+    // session. `resolvedAcpAgent` above is the backend agent name (e.g.
+    // "gemini") used by Opik/channel routing; here we also need the openclaw
+    // agent id (e.g. "gmail-tagger") to look up that agent's per-agent ACP
+    // runtime overrides. Mirrors the cron path in
+    // `src/cron/isolated-agent/run-acp.runtime.ts`.
+    //
+    // Note: by this point `acpResolution.kind` is narrowed to "ready" (the
+    // "none" case returns early at ~line 311; "stale" returns early at the
+    // stale branch above). So the only reason to call initializeSession here
+    // is to force re-init for oneshot agents — persistent agents keep their
+    // live subprocess, avoiding conversation interruption.
+    const openclawAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);
+    const agentConfig = resolveAcpAgentConfig(params.cfg, openclawAgentId);
+    if (agentConfig.mode === "oneshot") {
+      await acpManager.initializeSession({
+        cfg: params.cfg,
+        sessionKey: canonicalSessionKey,
+        agent: agentConfig.agent,
+        mode: agentConfig.mode,
+        ...(agentConfig.cwd ? { cwd: agentConfig.cwd } : {}),
+      });
+    }
 
     let acpOutputText = "";
     await acpManager.runTurn({

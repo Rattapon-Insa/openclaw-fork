@@ -1,6 +1,6 @@
 import { getAcpSessionManager } from "../../acp/control-plane/manager.js";
-import type { AcpRuntimeEvent, AcpRuntimeSessionMode } from "../../acp/runtime/types.js";
-import type { AgentConfig } from "../../config/types.agents.js";
+import { resolveAcpAgentConfig } from "../../acp/control-plane/resolve-agent-config.js";
+import type { AcpRuntimeEvent } from "../../acp/runtime/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 
@@ -26,27 +26,6 @@ export type RunAcpCronAgentResult = {
   };
   didSendViaMessagingTool: boolean;
 };
-
-type ResolvedAcpAgentConfig = {
-  agent: string;
-  mode: AcpRuntimeSessionMode;
-  cwd?: string;
-};
-
-function resolveAcpAgentConfig(cfg: OpenClawConfig, agentId: string): ResolvedAcpAgentConfig {
-  const agents: AgentConfig[] = cfg.agents?.list ?? [];
-  const entry = agents.find((a) => a?.id === agentId);
-  const acp = entry?.runtime?.type === "acp" ? entry.runtime.acp : undefined;
-  const configuredAgent =
-    typeof acp?.agent === "string" && acp.agent.trim().length > 0 ? acp.agent.trim() : undefined;
-  const configuredCwd =
-    typeof acp?.cwd === "string" && acp.cwd.trim().length > 0 ? acp.cwd.trim() : undefined;
-  return {
-    agent: configuredAgent ?? cfg.acp?.defaultAgent ?? "gemini",
-    mode: acp?.mode === "oneshot" ? "oneshot" : "persistent",
-    ...(configuredCwd ? { cwd: configuredCwd } : {}),
-  };
-}
 
 /**
  * Cron-path ACP dispatch. Bypasses runWithModelFallback because ACP runtimes
