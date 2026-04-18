@@ -29,9 +29,11 @@ type AgentTurnPayload = Extract<CronJob["payload"], { kind: "agentTurn" }> | nul
 type CronPromptRunResult = Awaited<ReturnType<typeof runCliAgent>>;
 type CronEmbeddedRuntime = typeof import("./run-embedded.runtime.js");
 type CronSubagentRegistryRuntime = typeof import("./run-subagent-registry.runtime.js");
+type CronAcpRuntime = typeof import("./run-acp.runtime.js");
 
 let cronEmbeddedRuntimePromise: Promise<CronEmbeddedRuntime> | undefined;
 let cronSubagentRegistryRuntimePromise: Promise<CronSubagentRegistryRuntime> | undefined;
+let cronAcpRuntimePromise: Promise<CronAcpRuntime> | undefined;
 
 async function loadCronEmbeddedRuntime() {
   cronEmbeddedRuntimePromise ??= import("./run-embedded.runtime.js");
@@ -41,6 +43,20 @@ async function loadCronEmbeddedRuntime() {
 async function loadCronSubagentRegistryRuntime() {
   cronSubagentRegistryRuntimePromise ??= import("./run-subagent-registry.runtime.js");
   return await cronSubagentRegistryRuntimePromise;
+}
+
+async function loadCronAcpRuntime() {
+  cronAcpRuntimePromise ??= import("./run-acp.runtime.js");
+  return await cronAcpRuntimePromise;
+}
+
+function isAcpRuntimeAgent(cfg: OpenClawConfig, agentId: string): boolean {
+  const list = cfg.agents?.list;
+  if (!Array.isArray(list)) {
+    return false;
+  }
+  const entry = list.find((candidate) => candidate?.id === agentId);
+  return entry?.runtime?.type === "acp";
 }
 
 export type CronExecutionResult = {
@@ -98,6 +114,25 @@ export function createCronPromptExecutor(params: {
   );
 
   const runPrompt = async (promptText: string) => {
+    if (isAcpRuntimeAgent(params.cfgWithAgentDefaults, params.agentId)) {
+      if (params.abortSignal?.aborted) {
+        throw new Error(params.abortReason());
+      }
+      const { runAcpCronAgent } = await loadCronAcpRuntime();
+      const acpResult = await runAcpCronAgent({
+        cfg: params.cfgWithAgentDefaults,
+        agentId: params.agentId,
+        sessionKey: params.agentSessionKey,
+        requestId: params.cronSession.sessionEntry.sessionId,
+        prompt: promptText,
+        timeoutMs: params.timeoutMs,
+        abortSignal: params.abortSignal,
+      });
+      runResult = acpResult as CronPromptRunResult;
+      // ACP runtimes own their own model selection; keep liveSelection untouched.
+      runEndedAt = Date.now();
+      return;
+    }
     const fallbackResult = await runWithModelFallback({
       cfg: params.cfgWithAgentDefaults,
       provider: params.liveSelection.provider,

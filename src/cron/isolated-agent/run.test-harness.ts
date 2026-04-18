@@ -52,6 +52,7 @@ export const resolveThinkingDefaultMock = createMock();
 export const runWithModelFallbackMock = createMock();
 export const runEmbeddedPiAgentMock = createMock();
 export const runCliAgentMock = createMock();
+export const runAcpCronAgentMock = createMock();
 export const lookupContextTokensMock = createMock();
 export const getCliSessionIdMock = createMock();
 export const updateSessionStoreMock = createMock();
@@ -180,6 +181,10 @@ vi.mock("./run-embedded.runtime.js", () => ({
   resolveFastModeState: resolveFastModeStateMock,
   resolveNestedAgentLane: resolveNestedAgentLaneMock,
   runEmbeddedPiAgent: runEmbeddedPiAgentMock,
+}));
+
+vi.mock("./run-acp.runtime.js", () => ({
+  runAcpCronAgent: runAcpCronAgentMock,
 }));
 
 vi.mock("./run-subagent-registry.runtime.js", () => ({
@@ -331,6 +336,8 @@ function resetRunExecutionMocks(): void {
   runWithModelFallbackMock.mockResolvedValue(makeDefaultModelFallbackResult());
   runEmbeddedPiAgentMock.mockReset();
   runEmbeddedPiAgentMock.mockResolvedValue(makeDefaultEmbeddedResult());
+  runAcpCronAgentMock.mockReset();
+  runAcpCronAgentMock.mockResolvedValue(makeDefaultEmbeddedResult());
   runCliAgentMock.mockReset();
   getCliSessionIdMock.mockReturnValue(undefined);
   countActiveDescendantRunsMock.mockReset();
