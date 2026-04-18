@@ -1,5 +1,5 @@
 import { getAcpSessionManager } from "../../acp/control-plane/manager.js";
-import type { AcpRuntimeEvent } from "../../acp/runtime/types.js";
+import type { AcpRuntimeEvent, AcpRuntimeSessionMode } from "../../acp/runtime/types.js";
 import type { AgentConfig } from "../../config/types.agents.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -27,16 +27,25 @@ export type RunAcpCronAgentResult = {
   didSendViaMessagingTool: boolean;
 };
 
-function resolveAcpAgentId(cfg: OpenClawConfig, agentId: string): string {
+type ResolvedAcpAgentConfig = {
+  agent: string;
+  mode: AcpRuntimeSessionMode;
+  cwd?: string;
+};
+
+function resolveAcpAgentConfig(cfg: OpenClawConfig, agentId: string): ResolvedAcpAgentConfig {
   const agents: AgentConfig[] = cfg.agents?.list ?? [];
   const entry = agents.find((a) => a?.id === agentId);
-  if (entry?.runtime?.type === "acp") {
-    const configured = entry.runtime.acp?.agent;
-    if (typeof configured === "string" && configured.trim().length > 0) {
-      return configured.trim();
-    }
-  }
-  return cfg.acp?.defaultAgent ?? "gemini";
+  const acp = entry?.runtime?.type === "acp" ? entry.runtime.acp : undefined;
+  const configuredAgent =
+    typeof acp?.agent === "string" && acp.agent.trim().length > 0 ? acp.agent.trim() : undefined;
+  const configuredCwd =
+    typeof acp?.cwd === "string" && acp.cwd.trim().length > 0 ? acp.cwd.trim() : undefined;
+  return {
+    agent: configuredAgent ?? cfg.acp?.defaultAgent ?? "gemini",
+    mode: acp?.mode === "oneshot" ? "oneshot" : "persistent",
+    ...(configuredCwd ? { cwd: configuredCwd } : {}),
+  };
 }
 
 /**
@@ -67,12 +76,14 @@ export async function runAcpCronAgent(
   }
 
   if (resolution.kind === "none") {
+    const agentConfig = resolveAcpAgentConfig(params.cfg, params.agentId);
     try {
       await manager.initializeSession({
         cfg: params.cfg,
         sessionKey: params.sessionKey,
-        agent: resolveAcpAgentId(params.cfg, params.agentId),
-        mode: "persistent",
+        agent: agentConfig.agent,
+        mode: agentConfig.mode,
+        ...(agentConfig.cwd ? { cwd: agentConfig.cwd } : {}),
       });
     } catch (err) {
       const message = formatErrorMessage(err);
