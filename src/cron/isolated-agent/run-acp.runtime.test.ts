@@ -138,7 +138,9 @@ describe("runAcpCronAgent — acp agent config resolution", () => {
     expect(initializeSessionMock.mock.calls[0]?.[0]?.agent).toBe("codex");
   });
 
-  it("skips initializeSession when session already ready", async () => {
+  it("re-initializes session on every fire for oneshot agents", async () => {
+    // oneshot agents expect fresh subprocess per fire, so initializeSession
+    // must run even when resolveSession returns 'ready'.
     resolveSessionMock.mockReturnValue({
       kind: "ready",
       sessionKey: "agent:gmail-tagger:main",
@@ -146,6 +148,32 @@ describe("runAcpCronAgent — acp agent config resolution", () => {
     });
 
     await runAcpCronAgent(makeParams(makeCfg()));
+
+    expect(initializeSessionMock).toHaveBeenCalledTimes(1);
+    expect(runTurnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips initializeSession on 'ready' for persistent agents", async () => {
+    resolveSessionMock.mockReturnValue({
+      kind: "ready",
+      sessionKey: "agent:main:main",
+      meta: { agent: "gemini" },
+    });
+    const cfg: CfgShape = {
+      agents: {
+        list: [
+          {
+            id: "gmail-tagger",
+            runtime: {
+              type: "acp" as const,
+              acp: { agent: "gemini", mode: "persistent" as const },
+            },
+          },
+        ],
+      },
+    };
+
+    await runAcpCronAgent(makeParams(cfg));
 
     expect(initializeSessionMock).not.toHaveBeenCalled();
     expect(runTurnMock).toHaveBeenCalledTimes(1);

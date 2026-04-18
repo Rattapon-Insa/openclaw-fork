@@ -75,8 +75,9 @@ export async function runAcpCronAgent(
     };
   }
 
-  if (resolution.kind === "none") {
-    const agentConfig = resolveAcpAgentConfig(params.cfg, params.agentId);
+  const agentConfig = resolveAcpAgentConfig(params.cfg, params.agentId);
+  const shouldReinitialize = resolution.kind === "none" || agentConfig.mode === "oneshot";
+  if (shouldReinitialize) {
     try {
       await manager.initializeSession({
         cfg: params.cfg,
