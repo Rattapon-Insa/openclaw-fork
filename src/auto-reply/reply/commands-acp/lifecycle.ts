@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getAcpSessionManager } from "../../../acp/control-plane/manager.js";
 import { resolveAcpSessionResolutionError } from "../../../acp/control-plane/manager.utils.js";
+import { resolveAcpAgentConfig } from "../../../acp/control-plane/resolve-agent-config.js";
 import {
   cleanupFailedAcpSpawn,
   type AcpSpawnRuntimeCloseHandle,
@@ -517,6 +518,22 @@ export async function handleAcpSpawnAction(
   const acpManager = getAcpSessionManager();
   const sessionKey = `agent:${spawn.agentId}:acp:${randomUUID()}`;
 
+  // `spawn.agentId` can be either:
+  //   - an openclaw agent id in cfg.agents.list (e.g. "gmail-tagger") whose
+  //     runtime.acp.{agent,cwd} points at the real backend + workspace, OR
+  //   - a backend harness name directly (e.g. "codex", "gemini") for the
+  //     legacy free-form spawn case.
+  // Only apply per-openclaw-agent lookup when the id matches an acp-runtime
+  // agent entry; otherwise keep the original "treat as backend name" behavior.
+  // Either way, explicit `--cwd` from the user wins.
+  const openclawAgentEntry = (params.cfg.agents?.list ?? []).find(
+    (a) => a?.id === spawn.agentId && a?.runtime?.type === "acp",
+  );
+  const resolvedAgent = openclawAgentEntry
+    ? resolveAcpAgentConfig(params.cfg, spawn.agentId)
+    : { agent: spawn.agentId, mode: spawn.mode, cwd: undefined as string | undefined };
+  const resolvedCwd = spawn.cwd ?? resolvedAgent.cwd;
+
   let initializedBackend = "";
   let initializedMeta: SessionAcpMeta | undefined;
   let initializedRuntime: AcpSpawnRuntimeCloseHandle | undefined;
@@ -524,9 +541,9 @@ export async function handleAcpSpawnAction(
     const initialized = await acpManager.initializeSession({
       cfg: params.cfg,
       sessionKey,
-      agent: spawn.agentId,
+      agent: resolvedAgent.agent,
       mode: spawn.mode,
-      cwd: spawn.cwd,
+      cwd: resolvedCwd,
     });
     initializedRuntime = {
       runtime: initialized.runtime,
