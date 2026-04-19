@@ -193,4 +193,32 @@ describe("runAcpCronAgent — acp agent config resolution", () => {
     expect(result.meta.error).toContain("ACP_SESSION_STALE");
     expect(result.payloads[0]).toMatchObject({ isError: true });
   });
+
+  it("surfaces an error payload when initializeSession fails for a oneshot agent", async () => {
+    // Simulate the Gemini CLI subprocess failing to spawn (e.g. Node missing,
+    // workspace dir deleted). The caller must see a structured error rather
+    // than an orphaned session or an unhandled rejection bubbling up.
+    initializeSessionMock.mockRejectedValue(new Error("ENOENT: gemini cli"));
+
+    const result = await runAcpCronAgent(makeParams(makeCfg()));
+
+    expect(initializeSessionMock).toHaveBeenCalledTimes(1);
+    expect(runTurnMock).not.toHaveBeenCalled();
+    expect(result.payloads[0]).toMatchObject({ isError: true });
+    const errorText = JSON.stringify(result);
+    expect(errorText).toContain("ENOENT");
+  });
+
+  it("surfaces an error payload when runTurn rejects", async () => {
+    // If the turn itself fails (timeout, transport error, Gemini rejects the
+    // prompt), the cron runner must still produce a usable result object.
+    runTurnMock.mockRejectedValue(new Error("runTurn transport closed"));
+
+    const result = await runAcpCronAgent(makeParams(makeCfg()));
+
+    expect(initializeSessionMock).toHaveBeenCalledTimes(1);
+    expect(runTurnMock).toHaveBeenCalledTimes(1);
+    expect(result.payloads[0]).toMatchObject({ isError: true });
+    expect(JSON.stringify(result)).toContain("runTurn transport closed");
+  });
 });
