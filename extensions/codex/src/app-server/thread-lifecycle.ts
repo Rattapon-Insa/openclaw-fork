@@ -1,4 +1,9 @@
-import { embeddedAgentLog, type EmbeddedRunAttemptParams } from "openclaw/plugin-sdk/agent-harness";
+import {
+  embeddedAgentLog,
+  loadWorkspaceBootstrapFiles,
+  type EmbeddedRunAttemptParams,
+  type WorkspaceBootstrapFile,
+} from "openclaw/plugin-sdk/agent-harness";
 import type { CodexAppServerClient } from "./client.js";
 import type { CodexAppServerRuntimeOptions } from "./config.js";
 import {
@@ -84,7 +89,7 @@ export async function startOrResumeThread(params: {
     sandbox: params.appServer.sandbox,
     ...(params.appServer.serviceTier ? { serviceTier: params.appServer.serviceTier } : {}),
     serviceName: "OpenClaw",
-    developerInstructions: buildDeveloperInstructions(params.params),
+    developerInstructions: await buildDeveloperInstructions(params.params),
     dynamicTools: params.dynamicTools,
     experimentalRawEvents: true,
     persistExtendedHistory: true,
@@ -170,10 +175,63 @@ function stabilizeJsonValue(value: JsonValue): JsonValue {
   return stable;
 }
 
-function buildDeveloperInstructions(params: EmbeddedRunAttemptParams): string {
+// Workspace bootstrap files to inject into codex developer instructions.
+// AGENTS.md is excluded because codex auto-injects it from cwd as a user message.
+// BOOTSTRAP.md is excluded because it's a one-time first-run file; the agent should
+// follow it from the workspace itself, not from the frozen prompt prefix.
+// Order is deterministic (matches loadWorkspaceBootstrapFiles return order) — required
+// for prompt-prefix cache stability.
+const CODEX_WORKSPACE_CONTEXT_INCLUDED_FILES = new Set([
+  "SOUL.md",
+  "TOOLS.md",
+  "IDENTITY.md",
+  "USER.md",
+  "HEARTBEAT.md",
+  "MEMORY.md",
+]);
+
+function formatWorkspaceContextSection(
+  files: WorkspaceBootstrapFile[],
+  workspaceDir: string,
+): string | undefined {
+  const present = files.filter(
+    (file) =>
+      !file.missing &&
+      typeof file.content === "string" &&
+      file.content.trim().length > 0 &&
+      CODEX_WORKSPACE_CONTEXT_INCLUDED_FILES.has(file.name),
+  );
+  if (present.length === 0) {
+    return undefined;
+  }
+  const lines: string[] = [
+    "## Workspace Persona Context",
+    `Files at \`${workspaceDir}\` describing who you are and how this tenant operates. Treat them as authoritative; AGENTS.md is delivered separately as a user-role instruction block.`,
+    "",
+  ];
+  for (const file of present) {
+    lines.push(`### ${file.name}`, "", file.content!.trim(), "");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+async function buildDeveloperInstructions(params: EmbeddedRunAttemptParams): Promise<string> {
+  let workspaceContext: string | undefined;
+  try {
+    const bootstrapFiles = await loadWorkspaceBootstrapFiles(params.workspaceDir);
+    workspaceContext = formatWorkspaceContextSection(bootstrapFiles, params.workspaceDir);
+  } catch (error) {
+    // Don't block thread start if workspace files can't be read; persona will be
+    // partially missing but the agent still starts. Log so the gap is visible.
+    embeddedAgentLog.warn("codex app-server: failed to load workspace bootstrap files", {
+      error,
+      workspaceDir: params.workspaceDir,
+    });
+  }
   const sections = [
     "You are running inside OpenClaw. Use OpenClaw dynamic tools for messaging, cron, sessions, and host actions when available.",
     "Preserve the user's existing channel/session context. If sending a channel reply, use the OpenClaw messaging tool instead of describing that you would reply.",
+    workspaceContext,
     params.extraSystemPrompt,
     params.skillsSnapshot?.prompt,
   ];
@@ -210,3 +268,8 @@ function resolveReasoningEffort(
   }
   return null;
 }
+
+export const __testing = {
+  buildDeveloperInstructions,
+  formatWorkspaceContextSection,
+} as const;

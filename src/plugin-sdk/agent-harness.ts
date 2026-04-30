@@ -19,6 +19,7 @@ export type { CompactEmbeddedPiSessionParams } from "../agents/pi-embedded-runne
 export type { EmbeddedPiCompactResult } from "../agents/pi-embedded-runner/types.js";
 export type { AnyAgentTool } from "../agents/tools/common.js";
 export type { MessagingToolSend } from "../agents/pi-embedded-messaging.types.js";
+export type { WorkspaceBootstrapFile, WorkspaceBootstrapFileName } from "../agents/workspace.js";
 export type { AgentApprovalEventData } from "../infra/agent-events.js";
 export type { ExecApprovalDecision } from "../infra/exec-approvals.js";
 export type { NormalizedUsage } from "../agents/usage.js";
@@ -51,6 +52,7 @@ export { disposeRegisteredAgentHarnesses } from "../agents/harness/registry.js";
 export { normalizeProviderToolSchemas } from "../agents/pi-embedded-runner/tool-schema-runtime.js";
 export { createOpenClawCodingTools } from "../agents/pi-tools.js";
 export { resolveSandboxContext } from "../agents/sandbox.js";
+export { loadWorkspaceBootstrapFiles } from "../agents/workspace.js";
 export { isSubagentSessionKey } from "../routing/session-key.js";
 export { acquireSessionWriteLock } from "../agents/session-write-lock.js";
 export { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
