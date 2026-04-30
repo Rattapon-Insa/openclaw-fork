@@ -783,6 +783,56 @@ const AgentRuntimeSchema = z
   ])
   .optional();
 
+/**
+ * Baseline capability tier this agent runs as before any caller-specific overrides.
+ *
+ * - `super-admin`: cross-tenant operations, template authoring, no approval gate.
+ * - `tenant-admin`: bounded to its own tenant; can manage skills, cron, and worker
+ *   workspaces; runtime config (model swaps, MCP refs, channels, plugins) remain
+ *   PR-only and must be enforced at the tool layer.
+ * - `worker`: confined to its own workspace; cannot mutate tenant runtime state
+ *   beyond skill/heartbeat-style notes.
+ *
+ * `callerOverrides` is reserved here as an additive seam; the runtime resolution
+ * (per-turn lookup against inbound sender id / channel id, DM gate, etc.) lands
+ * in the inbound preflight follow-up so the schema is forward-compatible.
+ */
+const AgentRoleBindingSchema = z
+  .object({
+    role: z.enum(["super-admin", "tenant-admin", "worker"]),
+    callerOverrides: z
+      .object({
+        superAdmin: z
+          .object({
+            discord: z
+              .object({
+                userIds: z.array(z.string()),
+                requireDm: z.boolean().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+        tenantAdmin: z
+          .object({
+            discord: z
+              .object({
+                userIds: z.array(z.string()).optional(),
+                channelIds: z.array(z.string()).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .optional();
+
 export const AgentEmbeddedHarnessSchema = z
   .object({
     runtime: z.string().optional(),
@@ -841,6 +891,7 @@ export const AgentEntrySchema = z
     params: z.record(z.string(), z.unknown()).optional(),
     tools: AgentToolsSchema,
     runtime: AgentRuntimeSchema,
+    roleBinding: AgentRoleBindingSchema,
   })
   .strict();
 
