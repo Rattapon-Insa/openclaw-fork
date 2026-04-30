@@ -30,6 +30,7 @@ export type ResolvedAgentConfig = {
   embeddedPi?: AgentEntry["embeddedPi"];
   sandbox?: AgentEntry["sandbox"];
   tools?: AgentEntry["tools"];
+  roleBinding?: AgentEntry["roleBinding"];
 };
 
 let log: ReturnType<typeof createSubsystemLogger> | null = null;
@@ -124,6 +125,7 @@ export function resolveAgentConfig(
       typeof entry.embeddedPi === "object" && entry.embeddedPi ? entry.embeddedPi : undefined,
     sandbox: entry.sandbox,
     tools: entry.tools,
+    roleBinding: entry.roleBinding,
   };
 }
 

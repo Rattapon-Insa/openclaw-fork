@@ -1,3 +1,4 @@
+import type { AgentRole } from "../config/types.agents.js";
 import type {
   MediaUnderstandingDecision,
   MediaUnderstandingOutput,
@@ -120,6 +121,16 @@ export type MsgContext = {
   Prompt?: string;
   MaxChars?: number;
   ChatType?: string;
+  /**
+   * Effective role this turn resolves to for the dispatched agent, based on
+   * the agent's `roleBinding` and the inbound caller envelope. Stamped by
+   * `runPreparedReply` once the agent is selected so downstream tool gating
+   * (workspace write/edit allowlist, gateway RPC config-set role gate, exec
+   * pattern denylist) can read a single source of truth instead of re-running
+   * the resolver in every consumer. Absent only if the runtime could not map
+   * the caller for this provider yet (forward-compatible default = `worker`).
+   */
+  ResolvedAgentRole?: AgentRole;
   /** Human label for envelope headers (conversation label, not sender). */
   ConversationLabel?: string;
   GroupSubject?: string;

@@ -17,6 +17,7 @@ import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
+import { stampResolvedAgentRole } from "../agent-role-stamp.js";
 import { hasControlCommand } from "../command-detection.js";
 import { resolveEnvelopeFormatOptions } from "../envelope.js";
 import type { MsgContext, TemplateContext } from "../templating.js";
@@ -234,6 +235,10 @@ export async function runPreparedReply(
     execOverrides,
     abortedLastRun,
   } = params;
+  // Stamp the effective role for this turn before any branch reads it. Cheap
+  // (pure resolver, no I/O) and lets downstream tool gating consume a single
+  // source of truth instead of re-running the resolver per consumer.
+  stampResolvedAgentRole({ cfg, agentId, ctx });
   const useFastReplyRuntime = shouldUseReplyFastTestRuntime({
     cfg,
     isFastTestEnv: process.env.OPENCLAW_TEST_FAST === "1",
