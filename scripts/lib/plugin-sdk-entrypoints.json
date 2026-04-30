@@ -89,6 +89,7 @@
   "account-id",
   "account-resolution",
   "agent-config-primitives",
+  "agent-role-resolution",
   "allow-from",
   "allowlist-config-edit",
   "bluebubbles",

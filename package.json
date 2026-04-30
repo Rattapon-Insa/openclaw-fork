@@ -407,6 +407,10 @@
       "types": "./dist/plugin-sdk/agent-config-primitives.d.ts",
       "default": "./dist/plugin-sdk/agent-config-primitives.js"
     },
+    "./plugin-sdk/agent-role-resolution": {
+      "types": "./dist/plugin-sdk/agent-role-resolution.d.ts",
+      "default": "./dist/plugin-sdk/agent-role-resolution.js"
+    },
     "./plugin-sdk/allow-from": {
       "types": "./dist/plugin-sdk/allow-from.d.ts",
       "default": "./dist/plugin-sdk/allow-from.js"
