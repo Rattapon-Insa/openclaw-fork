@@ -62,6 +62,37 @@ export type AgentAcpBinding = {
 
 export type AgentBinding = AgentRouteBinding | AgentAcpBinding;
 
+/** Role tier this agent runs as before any caller-specific overrides apply. */
+export type AgentRole = "super-admin" | "tenant-admin" | "worker";
+
+/**
+ * Caller allowlists that elevate the resolved role beyond the baseline for matching
+ * senders (e.g., a DM from a specific Discord userId resolves to `super-admin`).
+ *
+ * The schema defines the shape; the per-turn resolution against inbound preflight
+ * lands in a follow-up so this remains a forward-compatible additive seam.
+ */
+export type AgentRoleCallerOverrides = {
+  superAdmin?: {
+    discord?: {
+      userIds: string[];
+      /** Require the channel to be a DM, not a guild channel. */
+      requireDm?: boolean;
+    };
+  };
+  tenantAdmin?: {
+    discord?: {
+      userIds?: string[];
+      channelIds?: string[];
+    };
+  };
+};
+
+export type AgentRoleBinding = {
+  role: AgentRole;
+  callerOverrides?: AgentRoleCallerOverrides;
+};
+
 export type AgentConfig = {
   id: string;
   default?: boolean;
@@ -110,6 +141,11 @@ export type AgentConfig = {
   tools?: AgentToolsConfig;
   /** Optional runtime descriptor for this agent. */
   runtime?: AgentRuntimeConfig;
+  /**
+   * Optional capability tier this agent runs as. When omitted, the agent is
+   * treated as `worker` (least privilege) by downstream resolvers.
+   */
+  roleBinding?: AgentRoleBinding;
 };
 
 export type AgentsConfig = {
