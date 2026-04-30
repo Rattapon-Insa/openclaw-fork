@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import type { ImageContent } from "@mariozechner/pi-ai";
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
@@ -143,6 +144,20 @@ async function applyLinkUnderstandingIfNeeded(params: {
   return true;
 }
 
+async function loadEmbeddedNativeImagesIfNeeded(params: {
+  ctx: MsgContext;
+  cfg: OpenClawConfig;
+}): Promise<ImageContent[]> {
+  if (!hasInboundMedia(params.ctx)) {
+    return [];
+  }
+  const { resolveEmbeddedImageAttachments } = await import("./dispatch-embedded-attachments.js");
+  return resolveEmbeddedImageAttachments({
+    ctx: params.ctx as Parameters<typeof resolveEmbeddedImageAttachments>[0]["ctx"],
+    cfg: params.cfg,
+  });
+}
+
 export async function getReplyFromConfig(
   ctx: MsgContext,
   opts?: GetReplyOptions,
@@ -175,7 +190,7 @@ export async function getReplyFromConfig(
     opts?.skillFilter,
     resolveAgentSkillsFilter(cfg, agentId),
   );
-  const resolvedOpts =
+  let resolvedOpts =
     mergedSkillFilter !== undefined ? { ...opts, skillFilter: mergedSkillFilter } : opts;
   const agentCfg = cfg.agents?.defaults;
   const sessionCfg = cfg.session;
@@ -243,6 +258,19 @@ export async function getReplyFromConfig(
       ctx: finalized,
       cfg,
     });
+    // Load native vision attachments so embedded runtimes (e.g. Codex/GPT-5)
+    // receive image bytes directly. The ACP path uses dispatch-acp-attachments
+    // for the same purpose; this is the embedded counterpart.
+    const nativeImages = await loadEmbeddedNativeImagesIfNeeded({
+      ctx: finalized,
+      cfg,
+    });
+    if (nativeImages.length > 0) {
+      resolvedOpts = {
+        ...resolvedOpts,
+        images: [...(resolvedOpts?.images ?? []), ...nativeImages],
+      };
+    }
   }
   emitPreAgentMessageHooks({
     ctx: finalized,
