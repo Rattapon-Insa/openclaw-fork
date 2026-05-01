@@ -135,6 +135,42 @@ describe("agent-runner-utils", () => {
     });
   });
 
+  it("propagates resolvedAgentRole from run.run to embedded run base params", () => {
+    const run = makeRun({ resolvedAgentRole: "super-admin" });
+    const authProfile = resolveProviderScopedAuthProfile({
+      provider: "openai",
+      primaryProvider: "openai",
+      authProfileId: "profile-openai",
+      authProfileIdSource: "user",
+    });
+    const resolved = buildEmbeddedRunBaseParams({
+      run,
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      runId: "run-1",
+      authProfile,
+    });
+    expect(resolved.resolvedAgentRole).toBe("super-admin");
+  });
+
+  it("leaves resolvedAgentRole undefined when the run does not declare one", () => {
+    const run = makeRun();
+    const authProfile = resolveProviderScopedAuthProfile({
+      provider: "openai",
+      primaryProvider: "openai",
+      authProfileId: "profile-openai",
+      authProfileIdSource: "user",
+    });
+    const resolved = buildEmbeddedRunBaseParams({
+      run,
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      runId: "run-1",
+      authProfile,
+    });
+    expect(resolved.resolvedAgentRole).toBeUndefined();
+  });
+
   it("does not force final-tag enforcement for minimax providers", () => {
     const run = makeRun();
 
