@@ -1,4 +1,5 @@
 import { codingTools, createReadTool, readTool } from "@mariozechner/pi-coding-agent";
+import type { AgentRole } from "../config/types.agents.js";
 import type { ModelCompatConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
@@ -48,6 +49,7 @@ import {
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
+import { wrapExecToolWithRoleDeny } from "./role-exec-policy.js";
 import type { SandboxContext } from "./sandbox.js";
 import {
   EXEC_TOOL_DISPLAY_SUMMARY,
@@ -321,6 +323,15 @@ export function createOpenClawCodingTools(options?: {
   disableMessageTool?: boolean;
   /** Whether the sender is an owner (required for owner-only tools). */
   senderIsOwner?: boolean;
+  /**
+   * Effective role for this turn (`super-admin` / `tenant-admin` / `worker`),
+   * resolved upstream by the agent-role stamper. Used to gate role-sensitive
+   * subprocess invocations from the `exec` tool — see
+   * `src/agents/role-exec-policy.ts` for the per-role denylist (e.g.
+   * `tenant-admin` cannot run `openclaw config set agents.list[*].model`).
+   * When omitted, the runtime treats the agent as `worker` (least privilege).
+   */
+  resolvedAgentRole?: AgentRole;
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string) => Promise<void> | void;
 }): AnyAgentTool[] {
@@ -504,6 +515,9 @@ export function createOpenClawCodingTools(options?: {
         }
       : undefined,
   });
+  const gatedExecTool = wrapExecToolWithRoleDeny(execTool as unknown as AnyAgentTool, {
+    resolvedAgentRole: options?.resolvedAgentRole,
+  });
   const processTool = createLazyProcessTool({
     cleanupMs: cleanupMsOverride ?? execConfig.cleanupMs,
     scopeKey,
@@ -546,7 +560,7 @@ export function createOpenClawCodingTools(options?: {
         : []
       : []),
     ...(applyPatchTool ? [applyPatchTool as unknown as AnyAgentTool] : []),
-    execTool as unknown as AnyAgentTool,
+    gatedExecTool,
     processTool as unknown as AnyAgentTool,
     // Channel docking: include channel-defined agent tools (login, etc.).
     ...listChannelAgentTools({ cfg: options?.config }),

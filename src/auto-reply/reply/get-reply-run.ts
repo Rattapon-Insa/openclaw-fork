@@ -683,6 +683,10 @@ export async function runPreparedReply(
       ownerNumbers: command.ownerList.length > 0 ? command.ownerList : undefined,
       inputProvenance: ctx.InputProvenance ?? sessionCtx.InputProvenance,
       extraSystemPrompt: extraSystemPromptParts.join("\n\n") || undefined,
+      // Plumb the per-turn role stamped earlier in runPreparedReply so the
+      // tool layer (exec command pattern denylist) can gate role-sensitive
+      // subprocess invocations without re-resolving against caller info.
+      resolvedAgentRole: ctx.ResolvedAgentRole,
       skipProviderRuntimeHints: useFastReplyRuntime,
       ...(!useFastReplyRuntime &&
       isReasoningTagProvider(provider, {
