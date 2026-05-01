@@ -2,6 +2,7 @@ import type { ImageContent } from "@mariozechner/pi-ai";
 import type { ReplyPayload } from "../../../auto-reply/reply-payload.js";
 import type { ReplyOperation } from "../../../auto-reply/reply/reply-run-registry.js";
 import type { ReasoningLevel, ThinkLevel, VerboseLevel } from "../../../auto-reply/thinking.js";
+import type { AgentRole } from "../../../config/types.agents.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import type { PromptImageOrderEntry } from "../../../media/prompt-image-order.js";
 import type { CommandQueueEnqueueFn } from "../../../process/command-queue.types.js";
@@ -118,6 +119,15 @@ export type RunEmbeddedPiAgentParams = {
   lane?: string;
   enqueue?: CommandQueueEnqueueFn;
   extraSystemPrompt?: string;
+  /**
+   * Effective role this turn resolves to for the dispatched agent + caller.
+   * Stamped upstream by `runPreparedReply` (see
+   * `src/auto-reply/agent-role-stamp.ts`) and consumed by tool-layer
+   * enforcement (e.g. exec command pattern denylist) so role-based gating
+   * uses a single source of truth instead of re-running the resolver in
+   * every consumer. Defaults to `worker` (least privilege) downstream.
+   */
+  resolvedAgentRole?: AgentRole;
   internalEvents?: AgentInternalEvent[];
   inputProvenance?: InputProvenance;
   streamParams?: AgentStreamParams;
