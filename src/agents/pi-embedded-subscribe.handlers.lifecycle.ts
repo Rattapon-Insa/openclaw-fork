@@ -23,6 +23,10 @@ export {
 
 export function handleAgentStart(ctx: EmbeddedPiSubscribeContext) {
   ctx.log.debug(`embedded run agent start: runId=${ctx.params.runId}`);
+  // DEBUG: visibility for trace flow diagnostic (openclaw#17). Revert when done.
+  console.error(
+    `[opik-debug] handleAgentStart fired runId=${ctx.params.runId} agentId=${ctx.params.agentId ?? "unknown"}`,
+  );
   beginOpikTrace({
     agentId: ctx.params.agentId ?? "unknown",
     sessionId: ctx.params.sessionId ?? ctx.params.runId,
@@ -44,6 +48,8 @@ export function handleAgentStart(ctx: EmbeddedPiSubscribeContext) {
 }
 
 export function handleAgentEnd(ctx: EmbeddedPiSubscribeContext): void | Promise<void> {
+  // DEBUG: visibility for trace flow diagnostic (openclaw#17). Revert when done.
+  console.error(`[opik-debug] handleAgentEnd fired runId=${ctx.params.runId}`);
   const lastAssistant = ctx.state.lastAssistant;
   const isError = isAssistantMessage(lastAssistant) && lastAssistant.stopReason === "error";
   let lifecycleErrorText: string | undefined;

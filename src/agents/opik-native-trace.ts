@@ -77,6 +77,11 @@ export function beginOpikTrace(params: {
   runId: string;
   userMessage: string;
 }): void {
+  // DEBUG: temporary visibility for trace flow diagnostic. Revert to silent
+  // once root cause is identified (track via openclaw#17).
+  console.error(
+    `[opik-debug] beginOpikTrace enabled=${isEnabled()} url=${getOpikUrl()} runId=${params.runId} agentId=${params.agentId}`,
+  );
   if (!isEnabled()) {
     return;
   }
@@ -214,23 +219,34 @@ export async function flushOpikTrace(params: {
     metadata: span.durationMs != null ? { durationMs: span.durationMs } : {},
   }));
 
+  // DEBUG: temporary visibility for trace flow diagnostic (openclaw#17).
+  console.error(
+    `[opik-debug] flushOpikTrace url=${opikUrl} traceId=${acc.traceId} spans=${spanPayloads.length} runId=${params.runId}`,
+  );
   try {
     const fetchFn = getFetch();
-    await fetchFn(`${opikUrl}/v1/private/traces`, {
+    const traceRes = await fetchFn(`${opikUrl}/v1/private/traces`, {
       method: "POST",
       headers,
       body: JSON.stringify(tracePayload),
     });
+    console.error(
+      `[opik-debug] trace POST status=${traceRes.status} ok=${traceRes.ok}`,
+    );
     if (spanPayloads.length > 0) {
-      await fetchFn(`${opikUrl}/v1/private/spans/batch`, {
+      const spanRes = await fetchFn(`${opikUrl}/v1/private/spans/batch`, {
         method: "POST",
         headers,
         body: JSON.stringify({ spans: spanPayloads }),
       });
+      console.error(
+        `[opik-debug] spans POST status=${spanRes.status} ok=${spanRes.ok}`,
+      );
     }
-  } catch {
+  } catch (err) {
     // Fire-and-forget: log but don't throw.
     // Agent execution must not be blocked by Opik failures.
+    console.error(`[opik-debug] flush failed:`, err);
   }
 }
 
